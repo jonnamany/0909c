@@ -1,0 +1,644 @@
+<title>넉살FC 팀 편성기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 왼쪽 회원 명단(참석 체크), 오른쪽 팀 결과. 폰에서는 위아래로 쌓임. 코트 라인 아이콘과 볼 오렌지를 포인트로 사용. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #f3f6f9;
+  --fg: #14202e;
+  --muted: #566677;
+  --line: #d3dbe3;
+  --accent: #cf4a0c;
+  --accent-fg: #ffffff;
+  --on-bg: #fdece3;
+  --focus: #1f5fd0;
+  --good: #1c8a4f;
+  --warn: #a35a00;
+  --team-s: 70%;
+  --team-l: 38%;
+  --team-fg: #ffffff;
+  --font-display: "Barlow Condensed", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-body: "Barlow", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e151d; --surface: #16202b; --surface-2: #1c2835; --fg: #e8eef4; --muted: #9aabbb;
+    --line: #2a3846; --accent: #ff7a3d; --accent-fg: #1a0d05; --on-bg: #3a2418; --focus: #7fb0ff; --good: #4fd18b; --warn: #f0b24a;
+    --team-s: 75%; --team-l: 62%; --team-fg: #0e151d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e151d; --surface: #16202b; --surface-2: #1c2835; --fg: #e8eef4; --muted: #9aabbb;
+  --line: #2a3846; --accent: #ff7a3d; --accent-fg: #1a0d05; --on-bg: #3a2418; --focus: #7fb0ff; --good: #4fd18b; --warn: #f0b24a;
+  --team-s: 75%; --team-l: 62%; --team-fg: #0e151d; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.55 var(--font-body);
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 20px; }
+button, input, textarea, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand svg { width: 38px; height: 38px; flex: none; color: var(--accent); }
+h1 { font: 700 30px/1.1 var(--font-display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+.sub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.sync { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+.sync i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: block; }
+.sync[data-s="on"] i { background: var(--good); }
+.sync[data-s="local"] i { background: var(--warn); }
+.sync[data-s="err"] i { background: var(--accent); }
+
+.grid { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) { .grid { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); } }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 16px; min-width: 0; }
+.panel h2 { font: 700 20px/1.2 var(--font-display); letter-spacing: .02em; margin: 0; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.count b { color: var(--fg); font-family: var(--font-display); font-size: 20px; }
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 9px; padding: 8px 13px; cursor: pointer; font-weight: 500; }
+.btn:hover { background: var(--surface-2); }
+.btn.sm { padding: 5px 10px; font-size: 13px; border-radius: 8px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; padding: 11px 14px; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.ghost { border-style: dashed; color: var(--muted); }
+.btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.spacer { flex: 1; }
+
+.roster { display: grid; gap: 14px; }
+.group { display: grid; gap: 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.group-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.letter { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  font: 700 15px/1 var(--font-display); background: var(--fg); color: var(--bg); }
+.gl { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.group-head input { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-weight: 500; }
+.cat-n { flex: none; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+.group-head input + .cat-n { margin-left: 0; }
+.icon-btn { flex: none; width: 32px; height: 32px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; font-size: 18px; line-height: 1; }
+.icon-btn:hover { background: var(--surface); border-color: var(--line); color: var(--fg); }
+.icon-btn[disabled] { opacity: .35; cursor: not-allowed; }
+
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 8px; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 7px; min-height: 40px; min-width: 0; font-weight: 500; }
+.chip .nm { min-width: 0; overflow-wrap: anywhere; }
+.chip .box { flex: none; width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--muted); display: grid; place-items: center; font-size: 11px; line-height: 1; }
+.chip[aria-pressed="true"] { background: var(--on-bg); border-color: var(--accent); }
+.chip[aria-pressed="true"] .box { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.chip[aria-pressed="false"] .nm { color: var(--muted); }
+
+.erow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+.erow input, .erow select, .addrow input, .addrow select, .bulk textarea {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
+.erow select, .addrow select { max-width: 110px; }
+
+.editbox { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+.addrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.addrow input { flex: 1; min-width: 120px; }
+details.bulk { border: 1px dashed var(--line); border-radius: 10px; padding: 8px 12px; }
+details.bulk summary { cursor: pointer; color: var(--muted); font-weight: 500; }
+details.bulk[open] summary { margin-bottom: 8px; }
+.bulk textarea { width: 100%; min-height: 110px; resize: vertical; line-height: 1.5; margin-bottom: 8px; }
+
+.opts { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--line); padding-top: 14px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--surface); }
+.stepper button { width: 36px; height: 36px; border: 0; background: transparent; cursor: pointer; font-size: 18px; }
+.stepper button:hover { background: var(--surface-2); }
+.stepper output { min-width: 56px; text-align: center; font: 700 20px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.opt-label { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+.chk { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.chk input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.msg { margin: 0; font-size: 13.5px; color: var(--warn); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.teams { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); }
+.team { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 12px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.team-head { display: flex; align-items: center; gap: 10px; }
+.bib { flex: none; width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center;
+  font: 700 22px/1 var(--font-display); background: hsl(var(--h) var(--team-s) var(--team-l)); color: var(--team-fg); }
+.team-title { font: 700 18px/1.1 var(--font-display); }
+.team-n { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+.members { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.members li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; min-width: 0; }
+.members .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.members .lv { flex: none; font-size: 11.5px; color: var(--muted); font-family: var(--font-display); letter-spacing: .04em; }
+.members .lt { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--font-display); background: var(--fg); color: var(--bg); }
+.empty { text-align: center; color: var(--muted); padding: 28px 8px; border: 1px dashed var(--line); border-radius: 10px; }
+.foot { color: var(--muted); font-size: 12.5px; }
+@media (prefers-reduced-motion: no-preference) {
+  .team { animation: pop .25s ease-out both; }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+        <rect x="3" y="7" width="34" height="26" rx="3"/><line x1="20" y1="7" x2="20" y2="33"/><circle cx="20" cy="20" r="5.5"/>
+        <path d="M3 15h5v10H3M37 15h-5v10h5"/>
+      </svg>
+      <div>
+        <h1>넉살FC / 팀 편성기</h1>
+        <p class="sub">회원 명단을 저장해 두고, 오늘 참석한 사람만 골라 팀을 나눕니다.</p>
+      </div>
+    </div>
+    <span class="sync" id="sync" data-s="connecting" role="status"><i></i><span id="syncText">연결 중</span></span>
+  </header>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>회원 명단</h2>
+        <span class="count">참석 <b id="attN">0</b> / 전체 <span id="allN">0</span>명</span>
+      </div>
+      <p class="note" id="exampleNote">처음 보이는 이름은 예시입니다. ‘명단 편집’에서 실제 회원으로 바꿔 주세요.</p>
+      <div class="row">
+        <button class="btn sm" id="selAll" type="button">전체 참석</button>
+        <button class="btn sm" id="selNone" type="button">전체 해제</button>
+        <span class="spacer"></span>
+        <button class="btn sm" id="editBtn" type="button" aria-pressed="false">명단 편집</button>
+      </div>
+      <p class="msg" id="rosterMsg" hidden></p>
+      <div class="roster" id="roster"></div>
+      <div class="editbox" id="editbox" hidden>
+        <div class="addrow">
+          <input id="newName" type="text" placeholder="새 회원 이름" aria-label="새 회원 이름" autocomplete="off">
+          <select id="newGrade" aria-label="새 회원 등급"></select>
+          <button class="btn" id="addMember" type="button">회원 추가</button>
+        </div>
+        <details class="bulk">
+          <summary>여러 명 한 번에 등록</summary>
+          <textarea id="bulkText" placeholder="한 줄에 한 명씩 ‘이름 등급’으로 입력&#10;예)&#10;민준 상&#10;서준 중상&#10;하준 중" aria-label="일괄 등록"></textarea>
+          <button class="btn sm" id="bulkAdd" type="button">명단에 추가</button>
+        </details>
+        <div class="row">
+          <button class="btn sm ghost" id="addGrade" type="button">+ 등급 추가</button>
+          <button class="btn sm ghost" id="reset" type="button">예시 명단으로 되돌리기</button>
+        </div>
+      </div>
+      <div class="opts">
+        <div class="opt-label">
+          <span id="teamsLabel">팀 수</span>
+          <div class="stepper" role="group" aria-labelledby="teamsLabel">
+            <button type="button" id="tMinus" aria-label="팀 수 줄이기">−</button>
+            <output id="teamsOut">4</output>
+            <button type="button" id="tPlus" aria-label="팀 수 늘리기">+</button>
+          </div>
+        </div>
+        <label class="chk" for="showGrade"><input type="checkbox" id="showGrade" checked> 결과에 등급 표시</label>
+      </div>
+      <button class="btn primary" id="make" type="button">참석자로 팀 편성하기</button>
+      <p class="msg" id="msg" hidden></p>
+    </div>
+
+    <section class="panel" aria-labelledby="h-result">
+      <div class="panel-head">
+        <h2 id="h-result">오늘의 팀</h2>
+        <span class="count" id="resultInfo"></span>
+      </div>
+      <div class="row" id="resultActions" hidden>
+        <button class="btn" id="reshuffle" type="button">다시 섞기</button>
+        <button class="btn" id="copy" type="button">결과 복사</button>
+        <span class="note" id="copied" hidden></span>
+      </div>
+      <div id="result" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <p class="foot">같은 계정으로 이 페이지를 열면 PC와 폰에서 같은 명단·참석 체크·결과가 보입니다.</p>
+</div>
+
+<script>
+(function () {
+  var HUES = [215, 8, 150, 38, 275, 330, 185, 95, 20, 250, 60, 310];
+  var LS_KEY = "futsal-team-maker-v1";
+  var $ = function (id) { return document.getElementById(id); };
+  var edit = false, lastDel = null;
+
+  function example() {
+    var grades = [
+      { id: "g1", label: "상" }, { id: "g2", label: "중상" }, { id: "g3", label: "중" }, { id: "g4", label: "중하" }
+    ];
+    var names = {
+      g1: "민준 현우 지훈 도윤 건우 태양",
+      g2: "준서 서준 시우 예준 지호 승현 유준 동현",
+      g3: "우진 하준 유찬 태윤 승우 재민 주원 민재 은우",
+      g4: "성민 재현 정우 현석 영진 지안 도현"
+    };
+    var members = [], attend = {}, k = 0;
+    grades.forEach(function (g) {
+      names[g.id].split(" ").forEach(function (n) {
+        k++; var id = "m" + k;
+        members.push({ id: id, name: n, g: g.id });
+        if (k % 3 !== 0) attend[id] = 1;
+      });
+    });
+    return { teams: 4, showGrade: true, example: true, grades: grades, members: members, attend: attend, result: null };
+  }
+  var state = example();
+
+  function sanitize(d) {
+    if (!d || typeof d !== "object") return example();
+    var out = {
+      teams: Math.min(12, Math.max(2, parseInt(d.teams, 10) || 4)),
+      showGrade: d.showGrade !== false, example: !!d.example,
+      grades: [], members: [], attend: {}, result: null
+    };
+    if (Array.isArray(d.grades) && Array.isArray(d.members)) {
+      out.grades = d.grades.slice(0, 12).map(function (g) { return { id: String(g.id), label: String(g.label || "") }; });
+      if (!out.grades.length) return example();
+      var ids = {}; out.grades.forEach(function (g) { ids[g.id] = 1; });
+      out.members = d.members.slice(0, 300).map(function (m) {
+        return { id: String(m.id), name: String(m.name || "").trim(), g: ids[m.g] ? String(m.g) : out.grades[0].id };
+      }).filter(function (m) { return m.name; });
+      if (d.attend && typeof d.attend === "object") out.members.forEach(function (m) { if (d.attend[m.id]) out.attend[m.id] = 1; });
+    } else if (Array.isArray(d.cats) && d.cats.length) {
+      d.cats.slice(0, 12).forEach(function (c, i) {
+        var gid = "g" + (i + 1);
+        out.grades.push({ id: gid, label: String(c.label || "") });
+        parseNames(c.names).forEach(function (n, j) {
+          var id = "o" + i + "_" + j; out.members.push({ id: id, name: n, g: gid }); out.attend[id] = 1;
+        });
+      });
+    } else return example();
+    if (d.result && Array.isArray(d.result.teams)) out.result = d.result;
+    return out;
+  }
+
+  function uid() { return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function letter(i) { return String.fromCharCode(65 + i); }
+  function parseNames(t) { return String(t).split(/[\n,，、]+/).map(function (s) { return s.trim(); }).filter(Boolean); }
+  function shuffle(a) {
+    a = a.slice();
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  function attending() { return state.members.filter(function (m) { return state.attend[m.id]; }); }
+  function gradeLabel(g, i) { return g.label || ("등급 " + letter(i)); }
+
+  /* ---------- 편성: 참석자만, 등급별로 팀에 고르게 ---------- */
+  function assign() {
+    var n = state.teams, teams = [];
+    for (var i = 0; i < n; i++) teams.push([]);
+    state.grades.forEach(function (g, gi) {
+      var names = shuffle(attending().filter(function (m) { return m.g === g.id; }).map(function (m) { return m.name; }));
+      var order = shuffle(teams.map(function (_, k) { return k; })).sort(function (a, b) { return teams[a].length - teams[b].length; });
+      names.forEach(function (nm, j) { teams[order[j % n]].push({ n: nm, k: letter(gi), g: g.label, ci: gi }); });
+    });
+    state.result = { teams: teams.map(function (t) {
+      return t.sort(function (a, b) { return a.ci - b.ci; }).map(function (m) { return { n: m.n, k: m.k, g: m.g }; });
+    }), at: Date.now() };
+  }
+
+  /* ---------- 화면 ---------- */
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function rosterMsg(text, undo) {
+    var m = $("rosterMsg"); m.textContent = ""; m.hidden = !text;
+    if (!text) return;
+    m.appendChild(document.createTextNode(text));
+    if (undo) {
+      var b = el("button", "btn sm", "되돌리기"); b.type = "button";
+      b.addEventListener("click", function () {
+        var d = lastDel; if (!d) return;
+        state.members.splice(Math.min(d.idx, state.members.length), 0, d.m);
+        if (d.att) state.attend[d.m.id] = 1;
+        lastDel = null; rosterMsg(""); renderRoster(); touch();
+      });
+      m.appendChild(b);
+    }
+  }
+
+  function updateCounts() {
+    $("attN").textContent = attending().length;
+    $("allN").textContent = state.members.length;
+    $("teamsOut").textContent = state.teams;
+    $("showGrade").checked = state.showGrade;
+    $("exampleNote").hidden = !state.example;
+    var nodes = document.querySelectorAll("[data-gcount]");
+    for (var i = 0; i < nodes.length; i++) {
+      var gid = nodes[i].getAttribute("data-gcount");
+      var all = state.members.filter(function (m) { return m.g === gid; });
+      var on = all.filter(function (m) { return state.attend[m.id]; });
+      nodes[i].textContent = edit ? all.length + "명" : on.length + "/" + all.length;
+    }
+  }
+
+  function renderRoster() {
+    var box = $("roster"); box.textContent = "";
+    $("editBtn").textContent = edit ? "편집 마치기" : "명단 편집";
+    $("editBtn").setAttribute("aria-pressed", edit ? "true" : "false");
+    $("editbox").hidden = !edit;
+    $("selAll").hidden = edit; $("selNone").hidden = edit;
+
+    state.grades.forEach(function (g, gi) {
+      var grp = el("div", "group");
+      var head = el("div", "group-head");
+      head.appendChild(el("span", "letter", letter(gi)));
+      var list = state.members.filter(function (m) { return m.g === g.id; });
+
+      if (edit) {
+        var lab = document.createElement("input");
+        lab.type = "text"; lab.value = g.label; lab.placeholder = "등급 이름 (예: 상)";
+        lab.setAttribute("aria-label", letter(gi) + " 등급 이름");
+        lab.addEventListener("input", function () { g.label = lab.value; touch(); });
+        lab.addEventListener("change", function () { fillGradeSelect(); });
+        head.appendChild(lab);
+      } else {
+        head.appendChild(el("span", "gl", gradeLabel(g, gi)));
+      }
+      var cnt = el("span", "cat-n"); cnt.setAttribute("data-gcount", g.id);
+      head.appendChild(cnt);
+
+      if (edit) {
+        var dg = el("button", "icon-btn", "×"); dg.type = "button";
+        var blocked = list.length > 0 || state.grades.length <= 1;
+        dg.disabled = blocked;
+        dg.setAttribute("aria-label", blocked ? letter(gi) + " 등급은 회원이 없을 때만 삭제할 수 있습니다" : letter(gi) + " 등급 삭제");
+        dg.addEventListener("click", function () {
+          state.grades.splice(gi, 1); state.result = null; renderRoster(); touch();
+        });
+        head.appendChild(dg);
+      } else if (list.length) {
+        var tg = el("button", "btn sm", "등급 전체"); tg.type = "button";
+        tg.setAttribute("aria-label", gradeLabel(g, gi) + " 전체 참석 또는 해제");
+        tg.addEventListener("click", function () {
+          var every = list.every(function (m) { return state.attend[m.id]; });
+          list.forEach(function (m) { if (every) delete state.attend[m.id]; else state.attend[m.id] = 1; });
+          renderRoster(); touch();
+        });
+        head.appendChild(tg);
+      }
+      grp.appendChild(head);
+
+      if (!list.length) {
+        grp.appendChild(el("p", "note", "이 등급에 회원이 없습니다."));
+      } else if (edit) {
+        var rows = el("div", "roster");
+        list.forEach(function (m) {
+          var r = el("div", "erow");
+          var ni = document.createElement("input");
+          ni.type = "text"; ni.value = m.name; ni.setAttribute("aria-label", "회원 이름");
+          ni.addEventListener("input", function () { m.name = ni.value.trim() ? ni.value : m.name; if (ni.value.trim()) touch(); });
+          var sel = document.createElement("select");
+          sel.setAttribute("aria-label", m.name + " 등급");
+          state.grades.forEach(function (gg, k) {
+            var o = document.createElement("option"); o.value = gg.id; o.textContent = gradeLabel(gg, k);
+            if (gg.id === m.g) o.selected = true; sel.appendChild(o);
+          });
+          sel.addEventListener("change", function () { m.g = sel.value; state.result = state.result; renderRoster(); touch(); });
+          var del = el("button", "icon-btn", "×"); del.type = "button";
+          del.setAttribute("aria-label", m.name + " 삭제");
+          del.addEventListener("click", function () {
+            var idx = state.members.indexOf(m);
+            lastDel = { m: m, idx: idx, att: !!state.attend[m.id] };
+            state.members.splice(idx, 1); delete state.attend[m.id];
+            rosterMsg(m.name + " 님을 명단에서 지웠습니다.", true);
+            renderRoster(); touch();
+          });
+          r.appendChild(ni); r.appendChild(sel); r.appendChild(del);
+          rows.appendChild(r);
+        });
+        grp.appendChild(rows);
+      } else {
+        var chips = el("div", "chips");
+        list.forEach(function (m) {
+          var c = el("button", "chip"); c.type = "button";
+          var bx = el("span", "box", "✓"); var nm = el("span", "nm", m.name);
+          c.appendChild(bx); c.appendChild(nm);
+          c.setAttribute("aria-pressed", state.attend[m.id] ? "true" : "false");
+          bx.style.color = state.attend[m.id] ? "" : "transparent";
+          c.addEventListener("click", function () {
+            if (state.attend[m.id]) delete state.attend[m.id]; else state.attend[m.id] = 1;
+            var on = !!state.attend[m.id];
+            c.setAttribute("aria-pressed", on ? "true" : "false");
+            bx.style.color = on ? "" : "transparent";
+            updateCounts(); touch();
+          });
+          chips.appendChild(c);
+        });
+        grp.appendChild(chips);
+      }
+      box.appendChild(grp);
+    });
+    fillGradeSelect();
+    updateCounts();
+  }
+
+  function fillGradeSelect() {
+    var s = $("newGrade"), cur = s.value; s.textContent = "";
+    state.grades.forEach(function (g, i) {
+      var o = document.createElement("option"); o.value = g.id; o.textContent = gradeLabel(g, i); s.appendChild(o);
+    });
+    if (cur) s.value = cur;
+  }
+
+  function showMsg(t) { var m = $("msg"); m.hidden = !t; m.textContent = t || ""; }
+
+  function renderResult() {
+    var box = $("result"); box.textContent = "";
+    var r = state.result;
+    $("resultActions").hidden = !r;
+    if (!r) {
+      $("resultInfo").textContent = "";
+      box.appendChild(el("div", "empty", "참석자를 체크하고 ‘참석자로 팀 편성하기’를 누르면 여기에 팀이 나타납니다."));
+      return;
+    }
+    var sizes = r.teams.map(function (t) { return t.length; });
+    var mn = Math.min.apply(null, sizes), mx = Math.max.apply(null, sizes);
+    var all = sizes.reduce(function (a, b) { return a + b; }, 0);
+    $("resultInfo").textContent = all + "명 · " + r.teams.length + "팀 · 팀당 " + (mn === mx ? mn : mn + "~" + mx) + "명";
+    var wrap = el("div", "teams");
+    r.teams.forEach(function (t, i) {
+      var card = el("div", "team");
+      card.style.setProperty("--h", HUES[i % HUES.length]);
+      card.style.animationDelay = (i * 40) + "ms";
+      var head = el("div", "team-head");
+      head.appendChild(el("span", "bib", String(i + 1)));
+      head.appendChild(el("span", "team-title", (i + 1) + "팀"));
+      head.appendChild(el("span", "team-n", t.length + "명"));
+      card.appendChild(head);
+      var ul = el("ul", "members");
+      t.forEach(function (m) {
+        var li = el("li");
+        li.appendChild(el("span", "lt", m.k));
+        li.appendChild(el("span", "nm", m.n));
+        if (state.showGrade && m.g) li.appendChild(el("span", "lv", m.g));
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+      wrap.appendChild(card);
+    });
+    box.appendChild(wrap);
+  }
+
+  function make() {
+    var tot = attending().length;
+    if (tot === 0) { showMsg("오늘 참석하는 회원을 먼저 체크하세요."); return; }
+    if (tot < state.teams) { showMsg("참석자(" + tot + "명)보다 팀 수(" + state.teams + ")가 많습니다. 팀 수를 줄여 주세요."); return; }
+    showMsg("");
+    assign(); renderResult(); touch();
+  }
+
+  /* ---------- 저장 · 기기 연동 ---------- */
+  var docRef = null, dirty = false, timer = null, writing = false, again = false;
+  function setSync(s, text) { $("sync").setAttribute("data-s", s); $("syncText").textContent = text; }
+  function snapshotJson() { return JSON.stringify(state); }
+
+  function touch() {
+    state.example = false;
+    $("exampleNote").hidden = true;
+    dirty = true;
+    try { localStorage.setItem(LS_KEY, snapshotJson()); } catch (e) {}
+    if (!docRef) return;
+    clearTimeout(timer);
+    timer = setTimeout(flush, 600);
+  }
+
+  function flush() {
+    if (!docRef) return;
+    if (writing) { again = true; return; }
+    writing = true;
+    var json = snapshotJson();
+    docRef.set(JSON.parse(json)).then(function () {
+      if (snapshotJson() === json) dirty = false;
+      setSync("on", "기기 연동 중 · 저장됨");
+    }).catch(function () {
+      setSync("err", "저장 실패 · 이 기기에는 저장됨");
+    }).then(function () {
+      writing = false;
+      if (again) { again = false; flush(); }
+    });
+  }
+
+  function renderAll() { renderRoster(); renderResult(); }
+
+  function initSync() {
+    var cl = window.claude;
+    if (!cl || !cl.use) { setSync("local", "이 기기에만 저장"); return; }
+    Promise.all([cl.use("db"), cl.use("user")]).then(function (v) {
+      var db = v[0], user = v[1];
+      if (!db || !user) { setSync("local", "이 기기에만 저장 · 로그인하면 연동"); return; }
+      return user.id().then(function (id) {
+        if (!id) { setSync("local", "이 기기에만 저장 · 로그인하면 연동"); return; }
+        docRef = db.doc("data/users/" + id + "/team-maker");
+        var wait = setTimeout(function () { setSync("err", "서버에 연결하지 못했습니다"); }, 10000);
+        docRef.onSnapshot(function (snap) {
+          if (!snap.metadata.fromCache) { clearTimeout(wait); setSync("on", "기기 연동 중"); }
+          if (!snap.exists || dirty || writing) return;
+          var next = sanitize(snap.data());
+          var nj = JSON.stringify(next);
+          if (nj === snapshotJson()) return;
+          state = next; renderAll();
+          try { localStorage.setItem(LS_KEY, nj); } catch (e) {}
+        }, function () { clearTimeout(wait); setSync("err", "연동이 끊겼습니다 · 새로고침해 주세요"); });
+      });
+    }).catch(function () { setSync("local", "이 기기에만 저장"); });
+  }
+
+  /* ---------- 이벤트 ---------- */
+  $("make").addEventListener("click", make);
+  $("reshuffle").addEventListener("click", make);
+  $("tMinus").addEventListener("click", function () { if (state.teams > 2) { state.teams--; updateCounts(); touch(); } });
+  $("tPlus").addEventListener("click", function () { if (state.teams < 12) { state.teams++; updateCounts(); touch(); } });
+  $("showGrade").addEventListener("change", function (e) { state.showGrade = e.target.checked; renderResult(); touch(); });
+  $("selAll").addEventListener("click", function () {
+    state.members.forEach(function (m) { state.attend[m.id] = 1; }); renderRoster(); touch();
+  });
+  $("selNone").addEventListener("click", function () { state.attend = {}; renderRoster(); touch(); });
+  $("editBtn").addEventListener("click", function () { edit = !edit; rosterMsg(""); renderRoster(); });
+
+  function addMember() {
+    var inp = $("newName"), name = inp.value.trim();
+    if (!name) { rosterMsg("추가할 이름을 입력하세요."); return; }
+    if (state.members.length >= 300) { rosterMsg("회원은 최대 300명까지 저장할 수 있습니다."); return; }
+    var m = { id: uid(), name: name, g: $("newGrade").value || state.grades[0].id };
+    state.members.push(m); state.attend[m.id] = 1;
+    inp.value = ""; rosterMsg(""); renderRoster(); touch(); inp.focus();
+  }
+  $("addMember").addEventListener("click", addMember);
+  $("newName").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); addMember(); } });
+
+  $("bulkAdd").addEventListener("click", function () {
+    var lines = $("bulkText").value.split(/\n+/), added = 0, fallback = 0;
+    lines.forEach(function (line) {
+      var tk = line.split(/[,，\t]+|\s+/).filter(Boolean);
+      if (!tk.length || state.members.length >= 300) return;
+      var g = null;
+      if (tk.length >= 2) {
+        var last = tk[tk.length - 1];
+        g = state.grades.filter(function (x) { return x.label && x.label === last; })[0] || null;
+        if (g) tk.pop();
+      }
+      if (!g) { g = state.grades[0]; if (tk.length >= 2) fallback++; }
+      var m = { id: uid(), name: tk.join(" "), g: g.id };
+      state.members.push(m); state.attend[m.id] = 1; added++;
+    });
+    if (!added) { rosterMsg("추가할 이름이 없습니다."); return; }
+    $("bulkText").value = "";
+    rosterMsg(added + "명을 추가했습니다." + (fallback ? " 등급을 찾지 못한 " + fallback + "명은 첫 등급에 넣었습니다." : ""));
+    renderRoster(); touch();
+  });
+
+  $("addGrade").addEventListener("click", function () {
+    if (state.grades.length >= 12) return;
+    state.grades.push({ id: "g" + Date.now().toString(36), label: "" });
+    renderRoster(); touch();
+  });
+
+  var resetArmed = false, resetTimer = null;
+  $("reset").addEventListener("click", function () {
+    var b = $("reset");
+    if (!resetArmed) {
+      resetArmed = true; b.textContent = "저장한 명단이 모두 바뀝니다. 한 번 더 누르세요";
+      resetTimer = setTimeout(function () { resetArmed = false; b.textContent = "예시 명단으로 되돌리기"; }, 4000);
+      return;
+    }
+    clearTimeout(resetTimer); resetArmed = false; b.textContent = "예시 명단으로 되돌리기";
+    state = example(); showMsg(""); rosterMsg(""); renderAll(); touch(); state.example = true; updateCounts();
+  });
+
+  $("copy").addEventListener("click", function () {
+    var r = state.result; if (!r) return;
+    var text = r.teams.map(function (t, i) {
+      return (i + 1) + "팀 (" + t.length + "명): " + t.map(function (m) { return m.n + (state.showGrade && m.g ? "(" + m.g + ")" : ""); }).join(", ");
+    }).join("\n");
+    var done = function (ok) {
+      var c = $("copied"); c.textContent = ok ? "복사했습니다" : "복사하지 못했습니다. 직접 선택해 복사해 주세요.";
+      c.hidden = false; setTimeout(function () { c.hidden = true; }, 2200);
+    };
+    try { navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); }); }
+    catch (e) { done(false); }
+  });
+
+  /* ---------- 시작 ---------- */
+  try {
+    var saved = localStorage.getItem(LS_KEY);
+    if (saved) state = sanitize(JSON.parse(saved));
+  } catch (e) {}
+  renderAll();
+  initSync();
+})();
+</script>
