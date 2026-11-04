@@ -1,0 +1,445 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>풋살 팀 편성기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 왼쪽 명단 입력, 오른쪽 팀 결과. 폰에서는 위아래로 쌓임. 코트 라인(원형 센터서클)과 볼 오렌지를 포인트로 사용. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #f3f6f9;
+  --fg: #14202e;
+  --muted: #566677;
+  --line: #d3dbe3;
+  --accent: #cf4a0c;
+  --accent-fg: #ffffff;
+  --focus: #1f5fd0;
+  --good: #1c8a4f;
+  --warn: #a35a00;
+  --team-s: 70%;
+  --team-l: 38%;
+  --team-fg: #ffffff;
+  --font-display: "Barlow Condensed", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-body: "Barlow", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e151d; --surface: #16202b; --surface-2: #1c2835; --fg: #e8eef4; --muted: #9aabbb;
+    --line: #2a3846; --accent: #ff7a3d; --accent-fg: #1a0d05; --focus: #7fb0ff; --good: #4fd18b; --warn: #f0b24a;
+    --team-s: 75%; --team-l: 62%; --team-fg: #0e151d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e151d; --surface: #16202b; --surface-2: #1c2835; --fg: #e8eef4; --muted: #9aabbb;
+  --line: #2a3846; --accent: #ff7a3d; --accent-fg: #1a0d05; --focus: #7fb0ff; --good: #4fd18b; --warn: #f0b24a;
+  --team-s: 75%; --team-l: 62%; --team-fg: #0e151d; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.55 var(--font-body);
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 20px; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand svg { width: 38px; height: 38px; flex: none; color: var(--accent); }
+h1 { font: 700 30px/1.1 var(--font-display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+.sub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.sync { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+.sync i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: block; }
+.sync[data-s="on"] i { background: var(--good); }
+.sync[data-s="local"] i { background: var(--warn); }
+.sync[data-s="err"] i { background: var(--accent); }
+
+.grid { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) { .grid { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); } }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 16px; min-width: 0; }
+.panel h2 { font: 700 20px/1.2 var(--font-display); letter-spacing: .02em; margin: 0; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.count b { color: var(--fg); font-family: var(--font-display); font-size: 20px; }
+
+.cats { display: grid; gap: 10px; }
+.cat { background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+.cat-head { display: flex; align-items: center; gap: 8px; }
+.letter { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  font: 700 15px/1 var(--font-display); background: var(--fg); color: var(--bg); }
+.cat-head input { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-weight: 500; }
+.cat-n { flex: none; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+.icon-btn { flex: none; width: 32px; height: 32px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.icon-btn:hover { background: var(--surface); border-color: var(--line); color: var(--fg); }
+.cat textarea { width: 100%; min-height: 96px; resize: vertical; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; line-height: 1.5; }
+
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 9px; padding: 9px 14px; cursor: pointer; font-weight: 500; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.ghost { border-style: dashed; color: var(--muted); }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+.opts { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; padding-top: 4px; border-top: 1px solid var(--line); padding-top: 14px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--surface); }
+.stepper button { width: 36px; height: 36px; border: 0; background: transparent; cursor: pointer; font-size: 18px; }
+.stepper button:hover { background: var(--surface-2); }
+.stepper output { min-width: 56px; text-align: center; font: 700 20px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.opt-label { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+.chk { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.chk input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.msg { margin: 0; font-size: 13.5px; color: var(--warn); }
+
+.teams { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
+.team { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 12px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.team-head { display: flex; align-items: center; gap: 10px; }
+.bib { flex: none; width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center;
+  font: 700 22px/1 var(--font-display); background: hsl(var(--h) var(--team-s) var(--team-l)); color: var(--team-fg); }
+.team-title { font: 700 18px/1.1 var(--font-display); }
+.team-n { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+.members { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.members li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; min-width: 0; }
+.members .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.members .lv { flex: none; font-size: 11.5px; color: var(--muted); font-family: var(--font-display); letter-spacing: .04em; }
+.members .lt { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--font-display); background: var(--fg); color: var(--bg); }
+.empty { text-align: center; color: var(--muted); padding: 28px 8px; border: 1px dashed var(--line); border-radius: 10px; }
+.foot { color: var(--muted); font-size: 12.5px; }
+@media (prefers-reduced-motion: no-preference) {
+  .team { animation: pop .25s ease-out both; }
+  @keyframes pop { from { opacity: .0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+        <rect x="3" y="7" width="34" height="26" rx="3"/><line x1="20" y1="7" x2="20" y2="33"/><circle cx="20" cy="20" r="5.5"/>
+        <path d="M3 15h5v10H3M37 15h-5v10h5"/>
+      </svg>
+      <div>
+        <h1>풋살 팀 편성기</h1>
+        <p class="sub">실력 등급별로 인원을 고르게 나눠 팀을 만듭니다.</p>
+      </div>
+    </div>
+    <span class="sync" id="sync" data-s="connecting" role="status"><i></i><span id="syncText">연결 중</span></span>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="h-setup">
+      <div class="panel-head">
+        <h2 id="h-setup">참가자</h2>
+        <span class="count">총 <b id="total">0</b>명</span>
+      </div>
+      <p class="note" id="exampleNote">처음 보이는 이름은 예시입니다. 지우고 실제 참가자를 입력하세요. 이름은 줄바꿈이나 쉼표로 구분합니다.</p>
+      <div class="cats" id="cats"></div>
+      <div class="row">
+        <button class="btn ghost" id="addCat" type="button">+ 등급 추가</button>
+        <button class="btn ghost" id="reset" type="button">예시로 되돌리기</button>
+      </div>
+      <div class="opts">
+        <div class="opt-label">
+          <span id="teamsLabel">팀 수</span>
+          <div class="stepper" role="group" aria-labelledby="teamsLabel">
+            <button type="button" id="tMinus" aria-label="팀 수 줄이기">−</button>
+            <output id="teamsOut" for="tMinus tPlus">4</output>
+            <button type="button" id="tPlus" aria-label="팀 수 늘리기">+</button>
+          </div>
+        </div>
+        <label class="chk" for="showGrade"><input type="checkbox" id="showGrade" checked> 결과에 등급 표시</label>
+      </div>
+      <button class="btn primary" id="make" type="button">팀 편성하기</button>
+      <p class="msg" id="msg" hidden></p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-result">
+      <div class="panel-head">
+        <h2 id="h-result">오늘의 팀</h2>
+        <span class="count" id="resultInfo"></span>
+      </div>
+      <div class="row" id="resultActions" hidden>
+        <button class="btn" id="reshuffle" type="button">다시 섞기</button>
+        <button class="btn" id="copy" type="button">결과 복사</button>
+        <span class="note" id="copied" hidden>복사했습니다</span>
+      </div>
+      <div id="result" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <p class="foot" id="foot">같은 계정으로 이 페이지를 열면 PC와 폰에서 같은 명단과 결과가 보입니다.</p>
+</div>
+
+<script>
+(function () {
+  var HUES = [215, 8, 150, 38, 275, 330, 185, 95, 20, 250, 60, 310];
+  var LS_KEY = "futsal-team-maker-v1";
+  var $ = function (id) { return document.getElementById(id); };
+
+  function example() {
+    return {
+      teams: 4, showGrade: true, example: true, result: null,
+      cats: [
+        { id: "c1", label: "상", names: "민준\n현우\n지훈\n도윤\n건우" },
+        { id: "c2", label: "중상", names: "준서\n서준\n시우\n예준\n지호" },
+        { id: "c3", label: "중", names: "우진\n하준\n유찬\n태윤\n승우" },
+        { id: "c4", label: "중하", names: "성민\n재현\n정우\n현석\n영진" }
+      ]
+    };
+  }
+  var state = example();
+
+  function sanitize(d) {
+    var base = example();
+    if (!d || typeof d !== "object" || !Array.isArray(d.cats) || !d.cats.length) return base;
+    var out = {
+      teams: Math.min(12, Math.max(2, parseInt(d.teams, 10) || 4)),
+      showGrade: d.showGrade !== false,
+      example: !!d.example,
+      result: null,
+      cats: d.cats.slice(0, 12).map(function (c, i) {
+        return { id: String(c.id || "c" + i + Date.now()), label: String(c.label || ""), names: String(c.names || "") };
+      })
+    };
+    if (d.result && Array.isArray(d.result.teams)) out.result = d.result;
+    return out;
+  }
+
+  function letter(i) { return String.fromCharCode(65 + i); }
+  function parseNames(t) {
+    return String(t).split(/[\n,，、]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+  function total() { return state.cats.reduce(function (a, c) { return a + parseNames(c.names).length; }, 0); }
+  function shuffle(a) {
+    a = a.slice();
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+
+  /* ---------- 편성 ---------- */
+  function assign() {
+    var n = state.teams, teams = [];
+    for (var i = 0; i < n; i++) teams.push([]);
+    state.cats.forEach(function (c, ci) {
+      var names = shuffle(parseNames(c.names));
+      var order = shuffle(teams.map(function (_, k) { return k; })).sort(function (a, b) { return teams[a].length - teams[b].length; });
+      names.forEach(function (nm, j) { teams[order[j % n]].push({ n: nm, k: letter(ci), g: c.label, ci: ci }); });
+    });
+    teams.forEach(function (t) { t.sort(function (a, b) { return a.ci - b.ci; }); });
+    state.result = { teams: teams.map(function (t) { return t.map(function (m) { return { n: m.n, k: m.k, g: m.g }; }); }), at: Date.now() };
+  }
+
+  /* ---------- 화면 ---------- */
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function renderCats() {
+    var box = $("cats");
+    box.textContent = "";
+    state.cats.forEach(function (c, i) {
+      var card = el("div", "cat");
+      var head = el("div", "cat-head");
+      head.appendChild(el("span", "letter", letter(i)));
+      var lab = document.createElement("input");
+      lab.id = "label-" + c.id; lab.type = "text"; lab.value = c.label; lab.placeholder = "등급 이름 (예: 상)";
+      lab.setAttribute("aria-label", letter(i) + " 등급 이름");
+      lab.addEventListener("input", function () { c.label = lab.value; state.result = state.result; touch(); });
+      var cnt = el("span", "cat-n", parseNames(c.names).length + "명");
+      var del = el("button", "icon-btn", "×");
+      del.type = "button"; del.setAttribute("aria-label", letter(i) + " 등급 삭제");
+      del.disabled = state.cats.length <= 1;
+      del.addEventListener("click", function () {
+        if (state.cats.length <= 1) return;
+        state.cats.splice(i, 1); state.result = null; renderCats(); renderResult(); touch();
+      });
+      head.appendChild(lab); head.appendChild(cnt); head.appendChild(del);
+      var ta = document.createElement("textarea");
+      ta.id = "names-" + c.id; ta.value = c.names; ta.placeholder = "이름을 줄바꿈 또는 쉼표로 입력";
+      ta.setAttribute("aria-label", letter(i) + " 등급 참가자");
+      ta.addEventListener("input", function () {
+        c.names = ta.value; cnt.textContent = parseNames(c.names).length + "명"; updateTotal(); touch();
+      });
+      card.appendChild(head); card.appendChild(ta);
+      box.appendChild(card);
+    });
+    updateTotal();
+  }
+
+  function updateTotal() {
+    $("total").textContent = total();
+    $("teamsOut").textContent = state.teams;
+    $("showGrade").checked = state.showGrade;
+    $("exampleNote").hidden = !state.example;
+  }
+
+  function showMsg(t) { var m = $("msg"); m.hidden = !t; m.textContent = t || ""; }
+
+  function renderResult() {
+    var box = $("result"); box.textContent = "";
+    var r = state.result;
+    $("resultActions").hidden = !r;
+    if (!r) {
+      $("resultInfo").textContent = "";
+      box.appendChild(el("div", "empty", "‘팀 편성하기’를 누르면 여기에 팀이 나타납니다."));
+      return;
+    }
+    var sizes = r.teams.map(function (t) { return t.length; });
+    var mn = Math.min.apply(null, sizes), mx = Math.max.apply(null, sizes);
+    var all = sizes.reduce(function (a, b) { return a + b; }, 0);
+    $("resultInfo").textContent = all + "명 · " + r.teams.length + "팀 · 팀당 " + (mn === mx ? mn : mn + "~" + mx) + "명";
+    var wrap = el("div", "teams");
+    r.teams.forEach(function (t, i) {
+      var card = el("div", "team");
+      card.style.setProperty("--h", HUES[i % HUES.length]);
+      card.style.animationDelay = (i * 40) + "ms";
+      var head = el("div", "team-head");
+      head.appendChild(el("span", "bib", String(i + 1)));
+      head.appendChild(el("span", "team-title", (i + 1) + "팀"));
+      head.appendChild(el("span", "team-n", t.length + "명"));
+      card.appendChild(head);
+      var ul = el("ul", "members");
+      t.forEach(function (m) {
+        var li = el("li");
+        li.appendChild(el("span", "lt", m.k));
+        li.appendChild(el("span", "nm", m.n));
+        if (state.showGrade && m.g) li.appendChild(el("span", "lv", m.g));
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+      wrap.appendChild(card);
+    });
+    box.appendChild(wrap);
+  }
+
+  function make() {
+    var tot = total();
+    if (tot === 0) { showMsg("참가자 이름을 먼저 입력하세요."); return; }
+    if (tot < state.teams) { showMsg("참가자(" + tot + "명)보다 팀 수(" + state.teams + ")가 많습니다. 팀 수를 줄여 주세요."); return; }
+    showMsg("");
+    assign(); renderResult(); touch();
+  }
+
+  /* ---------- 저장 · 기기 연동 ---------- */
+  var docRef = null, dirty = false, timer = null, writing = false, again = false, lastJson = "";
+  function setSync(s, text) { $("sync").setAttribute("data-s", s); $("syncText").textContent = text; }
+
+  function snapshotJson() { return JSON.stringify(state); }
+
+  function touch() {
+    state.example = false;
+    $("exampleNote").hidden = true;
+    dirty = true;
+    try { localStorage.setItem(LS_KEY, snapshotJson()); } catch (e) {}
+    if (!docRef) return;
+    clearTimeout(timer);
+    timer = setTimeout(flush, 600);
+  }
+
+  function flush() {
+    if (!docRef) return;
+    if (writing) { again = true; return; }
+    writing = true;
+    var json = snapshotJson();
+    docRef.set(JSON.parse(json)).then(function () {
+      lastJson = json;
+      if (snapshotJson() === json) dirty = false;
+      setSync("on", "기기 연동 중 · 저장됨");
+    }).catch(function () {
+      setSync("err", "저장 실패 · 이 기기에는 저장됨");
+    }).then(function () {
+      writing = false;
+      if (again) { again = false; flush(); }
+    });
+  }
+
+  function renderAll() { renderCats(); renderResult(); }
+
+  function initSync() {
+    var cl = window.claude;
+    if (!cl || !cl.use) { setSync("local", "이 기기에만 저장"); return; }
+    Promise.all([cl.use("db"), cl.use("user")]).then(function (v) {
+      var db = v[0], user = v[1];
+      if (!db || !user) { setSync("local", "이 기기에만 저장 · 로그인하면 연동"); return; }
+      return user.id().then(function (id) {
+        if (!id) { setSync("local", "이 기기에만 저장 · 로그인하면 연동"); return; }
+        docRef = db.doc("data/users/" + id + "/team-maker");
+        var wait = setTimeout(function () { setSync("err", "서버에 연결하지 못했습니다"); }, 10000);
+        docRef.onSnapshot(function (snap) {
+          if (!snap.metadata.fromCache) { clearTimeout(wait); setSync("on", "기기 연동 중"); }
+          if (!snap.exists) return;
+          if (dirty || writing) return;
+          var next = sanitize(snap.data());
+          var nj = JSON.stringify(next);
+          if (nj === snapshotJson()) { lastJson = nj; return; }
+          state = next; lastJson = nj;
+          renderAll(); updateTotal();
+          try { localStorage.setItem(LS_KEY, nj); } catch (e) {}
+        }, function () { clearTimeout(wait); setSync("err", "연동이 끊겼습니다 · 새로고침해 주세요"); });
+      });
+    }).catch(function () { setSync("local", "이 기기에만 저장"); });
+  }
+
+  /* ---------- 이벤트 ---------- */
+  $("make").addEventListener("click", make);
+  $("reshuffle").addEventListener("click", make);
+  $("tMinus").addEventListener("click", function () { if (state.teams > 2) { state.teams--; updateTotal(); touch(); } });
+  $("tPlus").addEventListener("click", function () { if (state.teams < 12) { state.teams++; updateTotal(); touch(); } });
+  $("showGrade").addEventListener("change", function (e) { state.showGrade = e.target.checked; renderResult(); touch(); });
+  $("addCat").addEventListener("click", function () {
+    if (state.cats.length >= 12) return;
+    state.cats.push({ id: "c" + Date.now().toString(36), label: "", names: "" });
+    renderCats(); touch();
+    var last = state.cats[state.cats.length - 1];
+    var ta = $("names-" + last.id); if (ta) ta.focus();
+  });
+
+  var resetArmed = false, resetTimer = null;
+  $("reset").addEventListener("click", function () {
+    var b = $("reset");
+    if (!resetArmed) {
+      resetArmed = true; b.textContent = "정말 되돌릴까요? 한 번 더 누르세요";
+      resetTimer = setTimeout(function () { resetArmed = false; b.textContent = "예시로 되돌리기"; }, 3500);
+      return;
+    }
+    clearTimeout(resetTimer); resetArmed = false; b.textContent = "예시로 되돌리기";
+    state = example(); showMsg(""); renderAll(); touch(); state.example = true; updateTotal();
+  });
+
+  $("copy").addEventListener("click", function () {
+    var r = state.result; if (!r) return;
+    var text = r.teams.map(function (t, i) {
+      return (i + 1) + "팀 (" + t.length + "명): " + t.map(function (m) { return m.n + (state.showGrade && m.g ? "(" + m.g + ")" : ""); }).join(", ");
+    }).join("\n");
+    var done = function (ok) {
+      var c = $("copied"); c.textContent = ok ? "복사했습니다" : "복사하지 못했습니다. 직접 선택해 복사해 주세요.";
+      c.hidden = false; setTimeout(function () { c.hidden = true; }, 2200);
+    };
+    try { navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); }); }
+    catch (e) { done(false); }
+  });
+
+  /* ---------- 시작 ---------- */
+  try {
+    var saved = localStorage.getItem(LS_KEY);
+    if (saved) state = sanitize(JSON.parse(saved));
+  } catch (e) {}
+  renderAll();
+  initSync();
+})();
+</script>
+
+</body></html>
