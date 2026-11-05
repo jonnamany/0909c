@@ -1,5 +1,10 @@
-<title>넉살FC 팀 편성기</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>풋살 팀 편성기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
@@ -147,7 +152,8 @@ details.bulk[open] summary { margin-bottom: 8px; }
   @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 }
 </style>
-
+</head>
+<body>
 <div class="wrap">
   <header class="top">
     <div class="brand">
@@ -156,14 +162,20 @@ details.bulk[open] summary { margin-bottom: 8px; }
         <path d="M3 15h5v10H3M37 15h-5v10h5"/>
       </svg>
       <div>
-        <h1>넉살FC / 팀 편성기</h1>
+        <h1>풋살 팀 편성기</h1>
         <p class="sub">회원 명단을 저장해 두고, 오늘 참석한 사람만 골라 팀을 나눕니다.</p>
       </div>
     </div>
     <span class="sync" id="sync" data-s="connecting" role="status"><i></i><span id="syncText">연결 중</span></span>
   </header>
 
-  <div class="grid">
+  <section class="panel" id="gate" aria-live="polite">
+    <h2 id="gateTitle">불러오는 중</h2>
+    <p class="note" id="gateText"></p>
+    <div class="row" id="gateBtns"></div>
+      </section>
+
+  <div class="grid" id="grid" hidden>
     <div class="panel">
       <div class="panel-head">
         <h2>회원 명단</h2>
@@ -223,20 +235,35 @@ details.bulk[open] summary { margin-bottom: 8px; }
     </section>
   </div>
 
-  <p class="foot">같은 계정으로 이 페이지를 열면 PC와 폰에서 같은 명단·참석 체크·결과가 보입니다.</p>
+  <p class="foot">명단·참석 체크·팀 결과는 Firebase에 저장되어 PC와 폰에서 같은 화면으로 보입니다. 주소를 아는 사람은 누구나 수정할 수 있습니다.</p>
 </div>
 
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 (function () {
+  /* ====== 설정: Firebase 실시간 데이터베이스 주소를 아래 따옴표 안에 붙여넣으세요 ======
+     예) "https://내프로젝트-default-rtdb.asia-southeast1.firebasedatabase.app"
+     비워 두면 이 기기에만 저장됩니다(동기화 안 됨). */
+  var FIREBASE_DB_URL = "https://c-4514b-default-rtdb.asia-southeast1.firebasedatabase.app/";
+  var ROOT = "futsal";
+  /* =============================================================================== */
+
   var HUES = [215, 8, 150, 38, 275, 330, 185, 95, 20, 250, 60, 310];
   var LS_KEY = "futsal-team-maker-v1";
   var $ = function (id) { return document.getElementById(id); };
-  var edit = false, lastDel = null;
+  var edit = false, lastDel = null, pendingRender = false, wait = null;
+  var mode = "loading";            /* loading | local | shared | setup */
+  var db = null, connected = false, chipEls = {};
+  var last = { struct: "", attend: "", result: "" };
+  var localLegacy = null;
 
+  function defaultGrades() {
+    return [{ id: "g1", label: "상" }, { id: "g2", label: "중상" }, { id: "g3", label: "중" }, { id: "g4", label: "중하" }];
+  }
   function example() {
-    var grades = [
-      { id: "g1", label: "상" }, { id: "g2", label: "중상" }, { id: "g3", label: "중" }, { id: "g4", label: "중하" }
-    ];
+    var grades = defaultGrades();
     var names = {
       g1: "민준 현우 지훈 도윤 건우 태양",
       g2: "준서 서준 시우 예준 지호 승현 유준 동현",
@@ -247,7 +274,7 @@ details.bulk[open] summary { margin-bottom: 8px; }
     grades.forEach(function (g) {
       names[g.id].split(" ").forEach(function (n) {
         k++; var id = "m" + k;
-        members.push({ id: id, name: n, g: g.id });
+        members.push({ id: id, name: n, g: g.id, o: k });
         if (k % 3 !== 0) attend[id] = 1;
       });
     });
@@ -255,27 +282,26 @@ details.bulk[open] summary { margin-bottom: 8px; }
   }
   var state = example();
 
+  function parseNames(t) { return String(t).split(/[\n,，、]+/).map(function (s) { return s.trim(); }).filter(Boolean); }
   function sanitize(d) {
     if (!d || typeof d !== "object") return example();
-    var out = {
-      teams: Math.min(12, Math.max(2, parseInt(d.teams, 10) || 4)),
-      showGrade: d.showGrade !== false, example: !!d.example,
-      grades: [], members: [], attend: {}, result: null
-    };
+    var out = { teams: Math.min(12, Math.max(2, parseInt(d.teams, 10) || 4)), showGrade: d.showGrade !== false,
+      example: !!d.example, grades: [], members: [], attend: {}, result: null };
     if (Array.isArray(d.grades) && Array.isArray(d.members)) {
       out.grades = d.grades.slice(0, 12).map(function (g) { return { id: String(g.id), label: String(g.label || "") }; });
       if (!out.grades.length) return example();
       var ids = {}; out.grades.forEach(function (g) { ids[g.id] = 1; });
-      out.members = d.members.slice(0, 300).map(function (m) {
-        return { id: String(m.id), name: String(m.name || "").trim(), g: ids[m.g] ? String(m.g) : out.grades[0].id };
+      out.members = d.members.slice(0, 300).map(function (m, i) {
+        return { id: String(m.id), name: String(m.name || "").trim(), g: ids[m.g] ? String(m.g) : out.grades[0].id, o: typeof m.o === "number" ? m.o : i };
       }).filter(function (m) { return m.name; });
       if (d.attend && typeof d.attend === "object") out.members.forEach(function (m) { if (d.attend[m.id]) out.attend[m.id] = 1; });
     } else if (Array.isArray(d.cats) && d.cats.length) {
+      var k = 0;
       d.cats.slice(0, 12).forEach(function (c, i) {
         var gid = "g" + (i + 1);
         out.grades.push({ id: gid, label: String(c.label || "") });
         parseNames(c.names).forEach(function (n, j) {
-          var id = "o" + i + "_" + j; out.members.push({ id: id, name: n, g: gid }); out.attend[id] = 1;
+          var id = "o" + i + "_" + j; out.members.push({ id: id, name: n, g: gid, o: k++ }); out.attend[id] = 1;
         });
       });
     } else return example();
@@ -285,7 +311,6 @@ details.bulk[open] summary { margin-bottom: 8px; }
 
   function uid() { return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function letter(i) { return String.fromCharCode(65 + i); }
-  function parseNames(t) { return String(t).split(/[\n,，、]+/).map(function (s) { return s.trim(); }).filter(Boolean); }
   function shuffle(a) {
     a = a.slice();
     for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
@@ -293,8 +318,164 @@ details.bulk[open] summary { margin-bottom: 8px; }
   }
   function attending() { return state.members.filter(function (m) { return state.attend[m.id]; }); }
   function gradeLabel(g, i) { return g.label || ("등급 " + letter(i)); }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
 
-  /* ---------- 편성: 참석자만, 등급별로 팀에 고르게 ---------- */
+  /* ---------- 상태 표시 ---------- */
+  function setSync(s, text) { $("sync").setAttribute("data-s", s); $("syncText").textContent = text; }
+  function syncBadge() {
+    if (mode === "shared" || mode === "setup") {
+      if (connected) setSync("on", "실시간 동기화 중");
+      else setSync("local", "오프라인 · 연결되면 자동 저장");
+    }
+  }
+  function setMode(m) {
+    mode = m;
+    var gate = m === "loading" || m === "setup";
+    $("gate").hidden = !gate;
+    $("grid").hidden = gate;
+    if (gate) renderGate();
+    syncBadge();
+  }
+
+  function renderGate() {
+    var t = $("gateTitle"), x = $("gateText"), b = $("gateBtns");
+    b.textContent = "";
+    if (mode === "loading") {
+      t.textContent = "불러오는 중"; x.textContent = "저장된 명단을 가져오고 있습니다.";
+    } else if (mode === "setup") {
+      t.textContent = "저장된 명단이 없습니다";
+      x.textContent = "공용 저장소가 비어 있습니다. 시작 방식을 고르세요. 한 번 만들면 PC와 폰이 같은 명단을 봅니다.";
+      if (localLegacy) {
+        var l = el("button", "btn primary", "이 기기에 저장된 명단 가져오기 (" + localLegacy.members.length + "명)"); l.type = "button";
+        l.addEventListener("click", function () { seed(localLegacy); });
+        b.appendChild(l);
+      }
+      var e1 = el("button", "btn", "예시 명단으로 시작"); e1.type = "button";
+      e1.addEventListener("click", function () { seed(example()); });
+      var e2 = el("button", "btn", "빈 명단으로 시작"); e2.type = "button";
+      e2.addEventListener("click", function () {
+        seed({ teams: 4, showGrade: true, grades: defaultGrades(), members: [], attend: {} });
+      });
+      b.appendChild(e1); b.appendChild(e2);
+    }
+  }
+
+  /* ---------- 저장: 이 기기 ---------- */
+  function saveLocal() {
+    if (mode !== "local") return;
+    state.example = false; $("exampleNote").hidden = true;
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  /* ---------- 저장: Firebase ---------- */
+  function wr(p) {
+    if (p && p.catch) p.catch(function () { setSync("err", "저장 실패 · 네트워크와 보안 규칙을 확인하세요"); });
+  }
+  function root() { return db.ref(ROOT); }
+  function pAttend(ids, on) {
+    if (mode !== "shared") { saveLocal(); return; }
+    var u = {}; ids.forEach(function (id) { u["attend/" + id] = on ? 1 : null; });
+    wr(root().update(u));
+  }
+  function pSettings() {
+    if (mode !== "shared") { saveLocal(); return; }
+    wr(root().update({ "settings/teams": state.teams, "settings/showGrade": state.showGrade }));
+  }
+  function gradesObj() {
+    var g = {}; state.grades.forEach(function (x, i) { g[x.id] = { label: x.label, o: i }; }); return g;
+  }
+  function pGrades() {
+    if (mode !== "shared") { saveLocal(); return; }
+    wr(root().child("grades").set(gradesObj()));
+  }
+  function pMemberSet(m) {
+    if (mode !== "shared") { saveLocal(); return; }
+    wr(root().child("members/" + m.id).set({ name: m.name, g: m.g, o: m.o }));
+  }
+  function pMemberUpdate(m, patch) {
+    if (mode !== "shared") { saveLocal(); return; }
+    wr(root().child("members/" + m.id).update(patch));
+  }
+  function pMemberDelete(m) {
+    if (mode !== "shared") { saveLocal(); return; }
+    var u = {}; u["members/" + m.id] = null; u["attend/" + m.id] = null;
+    wr(root().update(u));
+  }
+  function pResult() {
+    if (mode !== "shared") { saveLocal(); return; }
+    var r = state.result;
+    wr(r ? root().child("result").set({ json: JSON.stringify(r.teams), at: r.at }) : root().child("result").remove());
+  }
+  function seed(st) {
+    var tree = { settings: { teams: st.teams, showGrade: st.showGrade }, grades: {}, members: {}, attend: {} };
+    st.grades.forEach(function (g, i) { tree.grades[g.id] = { label: g.label, o: i }; });
+    st.members.forEach(function (m, i) {
+      tree.members[m.id] = { name: m.name, g: m.g, o: i };
+      if (st.attend[m.id]) tree.attend[m.id] = 1;
+    });
+    $("gateBtns").textContent = ""; $("gateText").textContent = "명단을 만드는 중입니다.";
+    wr(root().set(tree));
+  }
+
+  /* ---------- Firebase 데이터 → 화면 상태 ---------- */
+  function fromTree(v) {
+    v = v || {};
+    var s = v.settings || {}, gobj = v.grades || {};
+    var grades = Object.keys(gobj).map(function (id) {
+      return { id: id, label: String((gobj[id] || {}).label || ""), o: +(gobj[id] || {}).o || 0 };
+    }).sort(function (a, b) { return a.o - b.o; }).map(function (g) { return { id: g.id, label: g.label }; });
+    if (!grades.length) grades = defaultGrades();
+    var ids = {}; grades.forEach(function (g) { ids[g.id] = 1; });
+    var mobj = v.members || {};
+    var members = Object.keys(mobj).map(function (id) {
+      var d = mobj[id] || {};
+      return { id: id, name: String(d.name || "").trim(), g: ids[d.g] ? d.g : grades[0].id, o: +d.o || 0 };
+    }).filter(function (m) { return m.name; }).sort(function (a, b) { return a.o - b.o; });
+    var have = {}; members.forEach(function (m) { have[m.id] = 1; });
+    var attend = {}; Object.keys(v.attend || {}).forEach(function (id) { if (v.attend[id] && have[id]) attend[id] = 1; });
+    var result = null;
+    if (v.result && v.result.json) {
+      try { var tm = JSON.parse(v.result.json); if (Array.isArray(tm)) result = { teams: tm, at: v.result.at }; } catch (e) {}
+    }
+    return { teams: Math.min(12, Math.max(2, parseInt(s.teams, 10) || 4)), showGrade: s.showGrade !== false,
+      example: false, grades: grades, members: members, attend: attend, result: result };
+  }
+
+  function rosterBusy() {
+    var a = document.activeElement;
+    return !!(a && $("roster").contains(a) && /INPUT|SELECT|TEXTAREA/.test(a.tagName));
+  }
+
+  function onValue(snap) {
+    clearTimeout(wait);
+    var v = snap.val();
+    if (!v || (!v.grades && !v.members)) {
+      last = { struct: "", attend: "", result: "" };
+      if (mode !== "setup") setMode("setup"); else renderGate();
+      return;
+    }
+    var next = fromTree(v);
+    var key = {
+      struct: JSON.stringify([next.grades, next.members, next.teams, next.showGrade]),
+      attend: JSON.stringify(next.attend),
+      result: JSON.stringify(next.result)
+    };
+    var first = mode !== "shared";
+    state = next;
+    if (first) { last = key; setMode("shared"); renderAll(); return; }
+    var sc = key.struct !== last.struct, ac = key.attend !== last.attend, rc = key.result !== last.result;
+    last = key;
+    if (sc) { if (rosterBusy()) { pendingRender = true; updateCounts(); } else renderAll(); return; }
+    if (ac) { syncChips(); updateCounts(); }
+    if (rc) renderResult();
+  }
+
+  /* ---------- 편성 ---------- */
   function assign() {
     var n = state.teams, teams = [];
     for (var i = 0; i < n; i++) teams.push([]);
@@ -309,12 +490,6 @@ details.bulk[open] summary { margin-bottom: 8px; }
   }
 
   /* ---------- 화면 ---------- */
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
-  }
   function rosterMsg(text, undo) {
     var m = $("rosterMsg"); m.textContent = ""; m.hidden = !text;
     if (!text) return;
@@ -324,8 +499,9 @@ details.bulk[open] summary { margin-bottom: 8px; }
       b.addEventListener("click", function () {
         var d = lastDel; if (!d) return;
         state.members.splice(Math.min(d.idx, state.members.length), 0, d.m);
-        if (d.att) state.attend[d.m.id] = 1;
-        lastDel = null; rosterMsg(""); renderRoster(); touch();
+        pMemberSet(d.m);
+        if (d.att) { state.attend[d.m.id] = 1; pAttend([d.m.id], true); }
+        lastDel = null; rosterMsg(""); renderRoster();
       });
       m.appendChild(b);
     }
@@ -336,7 +512,7 @@ details.bulk[open] summary { margin-bottom: 8px; }
     $("allN").textContent = state.members.length;
     $("teamsOut").textContent = state.teams;
     $("showGrade").checked = state.showGrade;
-    $("exampleNote").hidden = !state.example;
+    $("exampleNote").hidden = !(mode === "local" && state.example);
     var nodes = document.querySelectorAll("[data-gcount]");
     for (var i = 0; i < nodes.length; i++) {
       var gid = nodes[i].getAttribute("data-gcount");
@@ -346,12 +522,21 @@ details.bulk[open] summary { margin-bottom: 8px; }
     }
   }
 
+  function paintChip(id) {
+    var e = chipEls[id]; if (!e) return;
+    var on = !!state.attend[id];
+    e.c.setAttribute("aria-pressed", on ? "true" : "false");
+    e.bx.style.color = on ? "" : "transparent";
+  }
+  function syncChips() { Object.keys(chipEls).forEach(paintChip); }
+
   function renderRoster() {
-    var box = $("roster"); box.textContent = "";
+    var box = $("roster"); box.textContent = ""; chipEls = {};
     $("editBtn").textContent = edit ? "편집 마치기" : "명단 편집";
     $("editBtn").setAttribute("aria-pressed", edit ? "true" : "false");
     $("editbox").hidden = !edit;
     $("selAll").hidden = edit; $("selNone").hidden = edit;
+    var gtimer = null;
 
     state.grades.forEach(function (g, gi) {
       var grp = el("div", "group");
@@ -363,8 +548,10 @@ details.bulk[open] summary { margin-bottom: 8px; }
         var lab = document.createElement("input");
         lab.type = "text"; lab.value = g.label; lab.placeholder = "등급 이름 (예: 상)";
         lab.setAttribute("aria-label", letter(gi) + " 등급 이름");
-        lab.addEventListener("input", function () { g.label = lab.value; touch(); });
-        lab.addEventListener("change", function () { fillGradeSelect(); });
+        lab.addEventListener("input", function () {
+          g.label = lab.value; clearTimeout(gtimer);
+          gtimer = setTimeout(function () { pGrades(); fillGradeSelect(); }, 500);
+        });
         head.appendChild(lab);
       } else {
         head.appendChild(el("span", "gl", gradeLabel(g, gi)));
@@ -378,7 +565,8 @@ details.bulk[open] summary { margin-bottom: 8px; }
         dg.disabled = blocked;
         dg.setAttribute("aria-label", blocked ? letter(gi) + " 등급은 회원이 없을 때만 삭제할 수 있습니다" : letter(gi) + " 등급 삭제");
         dg.addEventListener("click", function () {
-          state.grades.splice(gi, 1); state.result = null; renderRoster(); touch();
+          state.grades.splice(gi, 1); state.result = null;
+          pGrades(); pResult(); renderRoster(); renderResult();
         });
         head.appendChild(dg);
       } else if (list.length) {
@@ -387,7 +575,8 @@ details.bulk[open] summary { margin-bottom: 8px; }
         tg.addEventListener("click", function () {
           var every = list.every(function (m) { return state.attend[m.id]; });
           list.forEach(function (m) { if (every) delete state.attend[m.id]; else state.attend[m.id] = 1; });
-          renderRoster(); touch();
+          pAttend(list.map(function (m) { return m.id; }), !every);
+          syncChips(); updateCounts();
         });
         head.appendChild(tg);
       }
@@ -401,22 +590,28 @@ details.bulk[open] summary { margin-bottom: 8px; }
           var r = el("div", "erow");
           var ni = document.createElement("input");
           ni.type = "text"; ni.value = m.name; ni.setAttribute("aria-label", "회원 이름");
-          ni.addEventListener("input", function () { m.name = ni.value.trim() ? ni.value : m.name; if (ni.value.trim()) touch(); });
+          ni.addEventListener("change", function () {
+            var v = ni.value.trim();
+            if (!v) { ni.value = m.name; return; }
+            m.name = v; pMemberUpdate(m, { name: v });
+          });
           var sel = document.createElement("select");
           sel.setAttribute("aria-label", m.name + " 등급");
           state.grades.forEach(function (gg, k) {
             var o = document.createElement("option"); o.value = gg.id; o.textContent = gradeLabel(gg, k);
             if (gg.id === m.g) o.selected = true; sel.appendChild(o);
           });
-          sel.addEventListener("change", function () { m.g = sel.value; state.result = state.result; renderRoster(); touch(); });
+          sel.addEventListener("change", function () { m.g = sel.value; pMemberUpdate(m, { g: m.g }); renderRoster(); });
           var del = el("button", "icon-btn", "×"); del.type = "button";
           del.setAttribute("aria-label", m.name + " 삭제");
           del.addEventListener("click", function () {
-            var idx = state.members.indexOf(m);
-            lastDel = { m: m, idx: idx, att: !!state.attend[m.id] };
+            var idx = state.members.findIndex(function (x) { return x.id === m.id; });
+            if (idx < 0) return;
+            lastDel = { m: state.members[idx], idx: idx, att: !!state.attend[m.id] };
             state.members.splice(idx, 1); delete state.attend[m.id];
+            pMemberDelete(m);
             rosterMsg(m.name + " 님을 명단에서 지웠습니다.", true);
-            renderRoster(); touch();
+            renderRoster();
           });
           r.appendChild(ni); r.appendChild(sel); r.appendChild(del);
           rows.appendChild(r);
@@ -428,14 +623,11 @@ details.bulk[open] summary { margin-bottom: 8px; }
           var c = el("button", "chip"); c.type = "button";
           var bx = el("span", "box", "✓"); var nm = el("span", "nm", m.name);
           c.appendChild(bx); c.appendChild(nm);
-          c.setAttribute("aria-pressed", state.attend[m.id] ? "true" : "false");
-          bx.style.color = state.attend[m.id] ? "" : "transparent";
+          chipEls[m.id] = { c: c, bx: bx }; paintChip(m.id);
           c.addEventListener("click", function () {
-            if (state.attend[m.id]) delete state.attend[m.id]; else state.attend[m.id] = 1;
-            var on = !!state.attend[m.id];
-            c.setAttribute("aria-pressed", on ? "true" : "false");
-            bx.style.color = on ? "" : "transparent";
-            updateCounts(); touch();
+            var on = !state.attend[m.id];
+            if (on) state.attend[m.id] = 1; else delete state.attend[m.id];
+            paintChip(m.id); updateCounts(); pAttend([m.id], on);
           });
           chips.appendChild(c);
         });
@@ -493,119 +685,110 @@ details.bulk[open] summary { margin-bottom: 8px; }
     });
     box.appendChild(wrap);
   }
+  function renderAll() { renderRoster(); renderResult(); }
 
   function make() {
     var tot = attending().length;
     if (tot === 0) { showMsg("오늘 참석하는 회원을 먼저 체크하세요."); return; }
     if (tot < state.teams) { showMsg("참석자(" + tot + "명)보다 팀 수(" + state.teams + ")가 많습니다. 팀 수를 줄여 주세요."); return; }
     showMsg("");
-    assign(); renderResult(); touch();
+    assign(); renderResult(); pResult();
   }
 
-  /* ---------- 저장 · 기기 연동 ---------- */
-  var docRef = null, dirty = false, timer = null, writing = false, again = false;
-  function setSync(s, text) { $("sync").setAttribute("data-s", s); $("syncText").textContent = text; }
-  function snapshotJson() { return JSON.stringify(state); }
-
-  function touch() {
-    state.example = false;
-    $("exampleNote").hidden = true;
-    dirty = true;
-    try { localStorage.setItem(LS_KEY, snapshotJson()); } catch (e) {}
-    if (!docRef) return;
-    clearTimeout(timer);
-    timer = setTimeout(flush, 600);
+  /* ---------- 시작 ---------- */
+  function goLocal(text) {
+    try { var saved = localStorage.getItem(LS_KEY); if (saved) state = sanitize(JSON.parse(saved)); } catch (e) {}
+    setSync("local", text);
+    setMode("local"); renderAll();
+  }
+  function readLocalLegacy() {
+    try {
+      var d = JSON.parse(localStorage.getItem(LS_KEY) || "null");
+      if (d && !d.example && (Array.isArray(d.members) || Array.isArray(d.cats))) {
+        var st = sanitize(d); if (st.members.length) localLegacy = st;
+      }
+    } catch (e) {}
   }
 
-  function flush() {
-    if (!docRef) return;
-    if (writing) { again = true; return; }
-    writing = true;
-    var json = snapshotJson();
-    docRef.set(JSON.parse(json)).then(function () {
-      if (snapshotJson() === json) dirty = false;
-      setSync("on", "기기 연동 중 · 저장됨");
-    }).catch(function () {
-      setSync("err", "저장 실패 · 이 기기에는 저장됨");
-    }).then(function () {
-      writing = false;
-      if (again) { again = false; flush(); }
+  function initSync() {
+    if (!FIREBASE_DB_URL) { goLocal("이 기기에만 저장 · Firebase 주소 미설정"); return; }
+    if (typeof firebase === "undefined") { goLocal("Firebase를 불러오지 못해 이 기기에만 저장"); return; }
+    try {
+      if (!firebase.apps.length) firebase.initializeApp({ databaseURL: FIREBASE_DB_URL });
+      db = firebase.database();
+    } catch (e) { goLocal("Firebase 연결 실패 · 이 기기에만 저장"); return; }
+    readLocalLegacy();
+    setMode("loading"); setSync("connecting", "연결 중");
+    wait = setTimeout(function () {
+      setSync("err", "서버에 연결하지 못했습니다");
+      $("gateText").textContent = "연결이 늦어지고 있습니다. 주소와 인터넷 연결을 확인한 뒤 새로고침하세요.";
+    }, 10000);
+    db.ref(".info/connected").on("value", function (s) { connected = s.val() === true; syncBadge(); });
+    db.ref(ROOT).on("value", onValue, function () {
+      clearTimeout(wait);
+      setSync("err", "읽기 권한 없음 · 보안 규칙을 확인하세요");
+      $("gateText").textContent = "데이터를 읽을 수 없습니다. Firebase 보안 규칙에서 읽기·쓰기를 허용했는지 확인하세요.";
     });
   }
 
-  function renderAll() { renderRoster(); renderResult(); }
-
-  function initSync() {
-    var cl = window.claude;
-    if (!cl || !cl.use) { setSync("local", "이 기기에만 저장"); return; }
-    Promise.all([cl.use("db"), cl.use("user")]).then(function (v) {
-      var db = v[0], user = v[1];
-      if (!db || !user) { setSync("local", "이 기기에만 저장 · 로그인하면 연동"); return; }
-      return user.id().then(function (id) {
-        if (!id) { setSync("local", "이 기기에만 저장 · 로그인하면 연동"); return; }
-        docRef = db.doc("data/users/" + id + "/team-maker");
-        var wait = setTimeout(function () { setSync("err", "서버에 연결하지 못했습니다"); }, 10000);
-        docRef.onSnapshot(function (snap) {
-          if (!snap.metadata.fromCache) { clearTimeout(wait); setSync("on", "기기 연동 중"); }
-          if (!snap.exists || dirty || writing) return;
-          var next = sanitize(snap.data());
-          var nj = JSON.stringify(next);
-          if (nj === snapshotJson()) return;
-          state = next; renderAll();
-          try { localStorage.setItem(LS_KEY, nj); } catch (e) {}
-        }, function () { clearTimeout(wait); setSync("err", "연동이 끊겼습니다 · 새로고침해 주세요"); });
-      });
-    }).catch(function () { setSync("local", "이 기기에만 저장"); });
-  }
-
   /* ---------- 이벤트 ---------- */
+  $("roster").addEventListener("focusout", function () {
+    setTimeout(function () { if (pendingRender && !rosterBusy()) { pendingRender = false; renderAll(); } }, 0);
+  });
   $("make").addEventListener("click", make);
   $("reshuffle").addEventListener("click", make);
-  $("tMinus").addEventListener("click", function () { if (state.teams > 2) { state.teams--; updateCounts(); touch(); } });
-  $("tPlus").addEventListener("click", function () { if (state.teams < 12) { state.teams++; updateCounts(); touch(); } });
-  $("showGrade").addEventListener("change", function (e) { state.showGrade = e.target.checked; renderResult(); touch(); });
+  $("tMinus").addEventListener("click", function () { if (state.teams > 2) { state.teams--; updateCounts(); pSettings(); } });
+  $("tPlus").addEventListener("click", function () { if (state.teams < 12) { state.teams++; updateCounts(); pSettings(); } });
+  $("showGrade").addEventListener("change", function (e) { state.showGrade = e.target.checked; renderResult(); pSettings(); });
   $("selAll").addEventListener("click", function () {
-    state.members.forEach(function (m) { state.attend[m.id] = 1; }); renderRoster(); touch();
+    state.members.forEach(function (m) { state.attend[m.id] = 1; });
+    pAttend(state.members.map(function (m) { return m.id; }), true); syncChips(); updateCounts();
   });
-  $("selNone").addEventListener("click", function () { state.attend = {}; renderRoster(); touch(); });
+  $("selNone").addEventListener("click", function () {
+    var ids = state.members.map(function (m) { return m.id; });
+    state.attend = {}; pAttend(ids, false); syncChips(); updateCounts();
+  });
   $("editBtn").addEventListener("click", function () { edit = !edit; rosterMsg(""); renderRoster(); });
 
   function addMember() {
     var inp = $("newName"), name = inp.value.trim();
     if (!name) { rosterMsg("추가할 이름을 입력하세요."); return; }
     if (state.members.length >= 300) { rosterMsg("회원은 최대 300명까지 저장할 수 있습니다."); return; }
-    var m = { id: uid(), name: name, g: $("newGrade").value || state.grades[0].id };
+    var m = { id: uid(), name: name, g: $("newGrade").value || state.grades[0].id, o: Date.now() };
     state.members.push(m); state.attend[m.id] = 1;
-    inp.value = ""; rosterMsg(""); renderRoster(); touch(); inp.focus();
+    pMemberSet(m); pAttend([m.id], true);
+    inp.value = ""; rosterMsg(""); renderRoster(); inp.focus();
   }
   $("addMember").addEventListener("click", addMember);
   $("newName").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); addMember(); } });
 
   $("bulkAdd").addEventListener("click", function () {
-    var lines = $("bulkText").value.split(/\n+/), added = 0, fallback = 0;
+    var lines = $("bulkText").value.split(/\n+/), added = [], fallback = 0, base = Date.now();
     lines.forEach(function (line) {
       var tk = line.split(/[,，\t]+|\s+/).filter(Boolean);
       if (!tk.length || state.members.length >= 300) return;
       var g = null;
       if (tk.length >= 2) {
-        var last = tk[tk.length - 1];
-        g = state.grades.filter(function (x) { return x.label && x.label === last; })[0] || null;
+        var lastTk = tk[tk.length - 1];
+        g = state.grades.filter(function (x) { return x.label && x.label === lastTk; })[0] || null;
         if (g) tk.pop();
       }
       if (!g) { g = state.grades[0]; if (tk.length >= 2) fallback++; }
-      var m = { id: uid(), name: tk.join(" "), g: g.id };
-      state.members.push(m); state.attend[m.id] = 1; added++;
+      var m = { id: uid(), name: tk.join(" "), g: g.id, o: base + added.length };
+      state.members.push(m); state.attend[m.id] = 1; added.push(m);
     });
-    if (!added) { rosterMsg("추가할 이름이 없습니다."); return; }
+    if (!added.length) { rosterMsg("추가할 이름이 없습니다."); return; }
+    added.forEach(pMemberSet);
+    pAttend(added.map(function (m) { return m.id; }), true);
     $("bulkText").value = "";
-    rosterMsg(added + "명을 추가했습니다." + (fallback ? " 등급을 찾지 못한 " + fallback + "명은 첫 등급에 넣었습니다." : ""));
-    renderRoster(); touch();
+    rosterMsg(added.length + "명을 추가했습니다." + (fallback ? " 등급을 찾지 못한 " + fallback + "명은 첫 등급에 넣었습니다." : ""));
+    renderRoster();
   });
 
   $("addGrade").addEventListener("click", function () {
     if (state.grades.length >= 12) return;
     state.grades.push({ id: "g" + Date.now().toString(36), label: "" });
-    renderRoster(); touch();
+    pGrades(); renderRoster();
   });
 
   var resetArmed = false, resetTimer = null;
@@ -617,7 +800,10 @@ details.bulk[open] summary { margin-bottom: 8px; }
       return;
     }
     clearTimeout(resetTimer); resetArmed = false; b.textContent = "예시 명단으로 되돌리기";
-    state = example(); showMsg(""); rosterMsg(""); renderAll(); touch(); state.example = true; updateCounts();
+    showMsg(""); rosterMsg("");
+    var ex = example();
+    if (mode === "shared") { seed(ex); }
+    else { state = ex; renderAll(); saveLocal(); state.example = true; updateCounts(); }
   });
 
   $("copy").addEventListener("click", function () {
@@ -633,12 +819,9 @@ details.bulk[open] summary { margin-bottom: 8px; }
     catch (e) { done(false); }
   });
 
-  /* ---------- 시작 ---------- */
-  try {
-    var saved = localStorage.getItem(LS_KEY);
-    if (saved) state = sanitize(JSON.parse(saved));
-  } catch (e) {}
-  renderAll();
+  renderGate();
   initSync();
 })();
 </script>
+</body>
+</html>
