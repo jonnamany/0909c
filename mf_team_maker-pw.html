@@ -935,6 +935,7 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
   });
 
   $("copyCars").addEventListener("click", function () {
+
 var list = attending();
 
 if (!list.length) { 
@@ -943,26 +944,34 @@ if (!list.length) {
 } 
 
 var validRows = [];
-var noCarList = [];
+var noCarNames = [];
+var unenteredNames = [];
 
 list.forEach(function (m) {
   var carNum = (state.carNumbers[carKey(m.name)] || "").trim();
   
   if (carNum.replace(/\s+/g, "") === "차량없음") {
-    noCarList.push(m.name + "(차량없음)");
+    noCarNames.push(m.name);
   } else if (!carNum || carNum === "미입력") {
-    noCarList.push(m.name + "(미입력)");
+    unenteredNames.push(m.name);
   } else {
     validRows.push((validRows.length + 1) + ". " + m.name + " - " + carNum);
   }
 });
 
-var text = "주차차량 취합 문자\n010-8630-5094\n\n";
+var text = "<주차차량 취합 문자>\n번호: 010-8630-5094\n\n";
 text += "(참석자 차량번호 / 총 " + validRows.length + "대)\n";
 text += validRows.length ? validRows.join("\n") : "등록된 차량 없음";
 
-if (noCarList.length > 0) {
-  text += "\n\n* 차량없음 / 미입력 : " + noCarList.join(", ");
+// 차량없음과 미입력을 각각 별도의 줄로 분리하여 표시
+if (noCarNames.length > 0 || unenteredNames.length > 0) {
+  text += "\n";
+  if (noCarNames.length > 0) {
+    text += "\n* 차량없음 (" + noCarNames.length + "명) : " + noCarNames.join(", ");
+  }
+  if (unenteredNames.length > 0) {
+    text += "\n* 미입력 (" + unenteredNames.length + "명) : " + unenteredNames.join(", ");
+  }
 }
 
 function done(ok) { 
@@ -978,6 +987,7 @@ if (navigator.clipboard && navigator.clipboard.writeText) {
 } else {
   done(false); 
 }
+
 
 
   });
