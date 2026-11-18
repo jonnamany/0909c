@@ -935,17 +935,51 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
   });
 
   $("copyCars").addEventListener("click", function () {
-    var rows = attending().map(function (m) {
-      return m.name + "\\t" + (state.carNumbers[carKey(m.name)] || "미입력");
-    });
-    if (!rows.length) { rosterMsg("참석자를 먼저 체크하세요."); return; }
-    var text = "이름\\t차량번호 뒤 4자리\\n" + rows.join("\\n");
-    function done(ok) {
-      rosterMsg(ok ? "참석자 차량번호 목록을 복사했습니다." : "복사하지 못했습니다. 브라우저 권한을 확인해 주세요.");
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
-    } else done(false);
+var list = attending();
+
+if (!list.length) { 
+  rosterMsg("참석자를 먼저 체크하세요."); 
+  return; 
+} 
+
+var validRows = [];
+var noCarList = [];
+
+list.forEach(function (m) {
+  var carNum = (state.carNumbers[carKey(m.name)] || "").trim();
+  
+  if (carNum.replace(/\s+/g, "") === "차량없음") {
+    noCarList.push(m.name + "(차량없음)");
+  } else if (!carNum || carNum === "미입력") {
+    noCarList.push(m.name + "(미입력)");
+  } else {
+    validRows.push((validRows.length + 1) + ". " + m.name + " - " + carNum);
+  }
+});
+
+var text = "주차차량 취합 문자\n010-8630-5094\n\n";
+text += "(참석자 차량번호 / 총 " + validRows.length + "대)\n";
+text += validRows.length ? validRows.join("\n") : "등록된 차량 없음";
+
+if (noCarList.length > 0) {
+  text += "\n\n* 차량없음 / 미입력 : " + noCarList.join(", ");
+}
+
+function done(ok) { 
+  rosterMsg(ok ? "참석자 차량번호 목록을 복사했습니다." : "복사하지 못했습니다. 브라우저 권한을 확인해 주세요."); 
+} 
+
+if (navigator.clipboard && navigator.clipboard.writeText) { 
+  navigator.clipboard.writeText(text).then(function () { 
+    done(true); 
+  }, function () { 
+    done(false); 
+  }); 
+} else {
+  done(false); 
+}
+
+
   });
 
   $("copy").addEventListener("click", function () {
