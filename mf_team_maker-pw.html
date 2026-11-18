@@ -108,7 +108,8 @@ h1 { font: 700 30px/1.1 var(--font-display); letter-spacing: .01em; margin: 0; t
 .chip[aria-pressed="true"] .box { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .chip[aria-pressed="false"] .nm { color: var(--muted); }
 
-.erow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+.erow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(88px, 112px) auto auto; gap: 6px; align-items: center; }
+.erow .car-input { width: 100%; font-variant-numeric: tabular-nums; }
 .erow input, .erow select, .addrow input, .addrow select, .bulk textarea {
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 .erow select, .addrow select { max-width: 110px; }
@@ -257,11 +258,13 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
         <button class="btn sm" id="selAll" type="button">전체 참석</button>
         <button class="btn sm" id="selNone" type="button">전체 해제</button>
         <span class="spacer"></span>
+        <button class="btn sm" id="copyCars" type="button">참석 차량번호 복사</button>
         <button class="btn sm" id="editBtn" type="button" aria-pressed="false">명단 편집</button>
       </div>
       <p class="msg" id="rosterMsg" hidden></p>
       <div class="roster" id="roster"></div>
       <div class="editbox" id="editbox" hidden>
+        <p class="note">회원별 차량번호 뒤 4자리를 입력하면 별도로 저장됩니다. 회원을 명단에서 삭제해도 차량번호 기록은 유지되며, 같은 이름으로 다시 등록하면 기존 번호가 표시됩니다.</p>
         <div class="addrow">
           <input id="newName" type="text" placeholder="새 회원 이름" aria-label="새 회원 이름" autocomplete="off">
           <select id="newGrade" aria-label="새 회원 등급"></select>
@@ -349,7 +352,7 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
         if (k % 3 !== 0) attend[id] = 1;
       });
     });
-    return { teams: 4, showGrade: true, example: true, grades: grades, members: members, attend: attend, result: null };
+    return { teams: 4, showGrade: true, example: true, grades: grades, members: members, attend: attend, carNumbers: {}, result: null };
   }
   var state = example();
 
@@ -357,7 +360,13 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
   function sanitize(d) {
     if (!d || typeof d !== "object") return example();
     var out = { teams: Math.min(12, Math.max(2, parseInt(d.teams, 10) || 4)), showGrade: d.showGrade !== false,
-      example: !!d.example, grades: [], members: [], attend: {}, result: null };
+      example: !!d.example, grades: [], members: [], attend: {}, carNumbers: {}, result: null };
+    if (d.carNumbers && typeof d.carNumbers === "object" && !Array.isArray(d.carNumbers)) {
+      Object.keys(d.carNumbers).forEach(function (k) {
+        var n = String(d.carNumbers[k] || "").replace(/\\D/g, "").slice(0, 4);
+        if (n) out.carNumbers[k] = n;
+      });
+    }
     if (Array.isArray(d.grades) && Array.isArray(d.members)) {
       out.grades = d.grades.slice(0, 12).map(function (g) { return { id: String(g.id), label: String(g.label || "") }; });
       if (!out.grades.length) return example();
@@ -380,6 +389,32 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
     return out;
   }
 
+  function carKey(name) {
+    return encodeURIComponent(String(name || "").trim()).replace(/\\./g, "%2E");
+  }
+  function setCarNumber(name, number) {
+    var key = carKey(name);
+    var value = String(number || "").replace(/\\D/g, "").slice(0, 4);
+    if (value) state.carNumbers[key] = value;
+    else delete state.carNumbers[key];
+    if (mode === "shared") {
+      var patch = {}; patch["carNumbers/" + key] = value || null;
+      wr(root().update(patch));
+    } else {
+      saveLocal();
+    }
+  }
+  function moveCarNumber(oldName, newName) {
+    var oldKey = carKey(oldName), newKey = carKey(newName);
+    if (oldKey === newKey || !state.carNumbers[oldKey]) return;
+    var value = state.carNumbers[oldKey];
+    delete state.carNumbers[oldKey];
+    state.carNumbers[newKey] = value;
+    if (mode === "shared") {
+      var patch = {}; patch["carNumbers/" + newKey] = value; patch["carNumbers/" + oldKey] = null;
+      wr(root().update(patch));
+    } else saveLocal();
+  }
   function uid() { return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function letter(i) { return String.fromCharCode(65 + i); }
   function shuffle(a) {
@@ -430,7 +465,7 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
       e1.addEventListener("click", function () { seed(example()); });
       var e2 = el("button", "btn", "빈 명단으로 시작"); e2.type = "button";
       e2.addEventListener("click", function () {
-        seed({ teams: 4, showGrade: true, grades: defaultGrades(), members: [], attend: {} });
+        seed({ teams: 4, showGrade: true, grades: defaultGrades(), members: [], attend: {}, carNumbers: state.carNumbers || {} });
       });
       b.appendChild(e1); b.appendChild(e2);
     }
@@ -483,7 +518,8 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
     wr(r ? root().child("result").set({ json: JSON.stringify(r.teams), at: r.at }) : root().child("result").remove());
   }
   function seed(st) {
-    var tree = { settings: { teams: st.teams, showGrade: st.showGrade }, grades: {}, members: {}, attend: {} };
+    var tree = { settings: { teams: st.teams, showGrade: st.showGrade }, grades: {}, members: {}, attend: {},
+      carNumbers: Object.assign({}, state.carNumbers || {}, st.carNumbers || {}) };
     st.grades.forEach(function (g, i) { tree.grades[g.id] = { label: g.label, o: i }; });
     st.members.forEach(function (m, i) {
       tree.members[m.id] = { name: m.name, g: m.g, o: i };
@@ -502,6 +538,11 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
     }).sort(function (a, b) { return a.o - b.o; }).map(function (g) { return { id: g.id, label: g.label }; });
     if (!grades.length) grades = defaultGrades();
     var ids = {}; grades.forEach(function (g) { ids[g.id] = 1; });
+    var carNumbers = {};
+    Object.keys(v.carNumbers || {}).forEach(function (k) {
+      var n = String(v.carNumbers[k] || "").replace(/\\D/g, "").slice(0, 4);
+      if (n) carNumbers[k] = n;
+    });
     var mobj = v.members || {};
     var members = Object.keys(mobj).map(function (id) {
       var d = mobj[id] || {};
@@ -514,7 +555,7 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
       try { var tm = JSON.parse(v.result.json); if (Array.isArray(tm)) result = { teams: tm, at: v.result.at }; } catch (e) {}
     }
     return { teams: Math.min(12, Math.max(2, parseInt(s.teams, 10) || 4)), showGrade: s.showGrade !== false,
-      example: false, grades: grades, members: members, attend: attend, result: result };
+      example: false, grades: grades, members: members, attend: attend, carNumbers: carNumbers, result: result };
   }
 
   function rosterBusy() {
@@ -532,7 +573,7 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
     }
     var next = fromTree(v);
     var key = {
-      struct: JSON.stringify([next.grades, next.members, next.teams, next.showGrade]),
+      struct: JSON.stringify([next.grades, next.members, next.teams, next.showGrade, next.carNumbers]),
       attend: JSON.stringify(next.attend),
       result: JSON.stringify(next.result)
     };
@@ -662,9 +703,25 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
           var ni = document.createElement("input");
           ni.type = "text"; ni.value = m.name; ni.setAttribute("aria-label", "회원 이름");
           ni.addEventListener("change", function () {
+            var oldName = m.name;
             var v = ni.value.trim();
             if (!v) { ni.value = m.name; return; }
+            if (v !== oldName) moveCarNumber(oldName, v);
             m.name = v; pMemberUpdate(m, { name: v });
+          });
+          var ci = document.createElement("input");
+          ci.type = "text";
+          ci.inputMode = "numeric";
+          ci.maxLength = 4;
+          ci.placeholder = "차량번호";
+          ci.className = "car-input";
+          ci.value = state.carNumbers[carKey(m.name)] || "";
+          ci.setAttribute("aria-label", m.name + " 차량번호 뒤 4자리");
+          ci.addEventListener("input", function () {
+            ci.value = ci.value.replace(/\\D/g, "").slice(0, 4);
+          });
+          ci.addEventListener("change", function () {
+            setCarNumber(m.name, ci.value);
           });
           var sel = document.createElement("select");
           sel.setAttribute("aria-label", m.name + " 등급");
@@ -684,7 +741,7 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
             rosterMsg(m.name + " 님을 명단에서 지웠습니다.", true);
             renderRoster();
           });
-          r.appendChild(ni); r.appendChild(sel); r.appendChild(del);
+          r.appendChild(ni); r.appendChild(ci); r.appendChild(sel); r.appendChild(del);
           rows.appendChild(r);
         });
         grp.appendChild(rows);
@@ -875,6 +932,20 @@ html.pw-locked body > *:not(#pw-gate) { display: none !important; }
     var ex = example();
     if (mode === "shared") { seed(ex); }
     else { state = ex; renderAll(); saveLocal(); state.example = true; updateCounts(); }
+  });
+
+  $("copyCars").addEventListener("click", function () {
+    var rows = attending().map(function (m) {
+      return m.name + "\\t" + (state.carNumbers[carKey(m.name)] || "미입력");
+    });
+    if (!rows.length) { rosterMsg("참석자를 먼저 체크하세요."); return; }
+    var text = "이름\\t차량번호 뒤 4자리\\n" + rows.join("\\n");
+    function done(ok) {
+      rosterMsg(ok ? "참석자 차량번호 목록을 복사했습니다." : "복사하지 못했습니다. 브라우저 권한을 확인해 주세요.");
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else done(false);
   });
 
   $("copy").addEventListener("click", function () {
