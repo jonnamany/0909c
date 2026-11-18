@@ -995,7 +995,13 @@ if (navigator.clipboard && navigator.clipboard.writeText) {
   $("copy").addEventListener("click", function () {
     var r = state.result; if (!r) return;
     var text = r.teams.map(function (t, i) {
-      return (i + 1) + "팀 (" + t.length + "명): " + t.map(function (m) { return m.n + (state.showGrade && m.g ? "(" + m.g + ")" : ""); }).join(", ");
+
+  /* 오늘의 팀 결과 복사 시 */
+// 기존코드  return (i + 1) + "팀 (" + t.length + "명): " + t.map(function (m) { return m.n + (state.showGrade && m.g ? "(" + m.g + ")" : ""); }).join(" "); //
+// 기존 결과물 (1팀 (5명): 이수성 박성우 장현준 고준현 위용진) //
+      return (i + 1) + ": " + t.map(function (m) { return m.n + (state.showGrade && m.g ? "(" + m.g + ")" : ""); }).join(" ");
+// 결과물 1: 이수성 박성우 장현준 고준현 위용진 //
+
     }).join("\n");
     var done = function (ok) {
       var c = $("copied"); c.textContent = ok ? "복사했습니다" : "복사하지 못했습니다. 직접 선택해 복사해 주세요.";
